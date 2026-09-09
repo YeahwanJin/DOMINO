@@ -1,0 +1,36 @@
+# Dependencies for running DynamicVLA inside DOMINO.
+#
+# Install into a dedicated environment (e.g. `conda create -n dynamicvla python=3.11`),
+# NOT into DOMINO's own env: DOMINO pins torch==2.4.1 for SAPIEN, while this stack
+# needs a newer torch. The two talk over TCP via script/policy_model_server.py.
+#
+# Differences from the upstream requirements.txt: the Isaac Lab / streaming-inference
+# extras (pyzmq, pylibmc, nvidia-ml-py) are dropped, and the pieces used by the
+# DOMINO data pipeline are pinned explicitly.
+
+torch==2.7.1
+torchvision
+torchcodec          # video decoding in utils/datasets.py and scripts/generate_depth.py
+lerobot==0.3.3
+transformers==5.2.0  # also serves Depth Anything V2 in scripts/generate_depth.py
+diffusers            # LR schedulers in core/train.py
+safetensors
+einops
+easydict
+h5py
+imageio
+num2words
+numpy==1.26.4
+opencv-python-headless<4.12
+PyYAML
+scipy
+tensorboard
+timm
+tqdm
+wandb
+
+# Optional: only needed when WORLD_MODEL_RENDER_WEIGHT > 0 (photometric loss).
+# Not on PyPI — build it from the copy vendored with GaussianDream:
+#   pip install -e <GaussianDream>/third_party/AD-FFgsStudio/diff-gaussian-rasterization
+# Requires a CUDA toolchain matching the torch build above. Without it the
+# world-model branch silently falls back to depth supervision only.

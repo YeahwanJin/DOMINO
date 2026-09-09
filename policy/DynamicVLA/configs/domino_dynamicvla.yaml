@@ -1,0 +1,92 @@
+# DynamicVLA on DOMINO (RoboTwin / SAPIEN, bimanual aloha-agilex) with the
+# GaussianDream-style world-model auxiliary loss enabled during training.
+#
+# Depth labels come from scripts/generate_depth.py (Depth Anything V2) and are
+# used only as a supervision target — they are never a model input, so the
+# inference path is identical to stock DynamicVLA.
+CONST:
+  EXP_NAME: null
+  N_WORKERS: 8
+
+DATASET:
+  # Overridden on the command line with `-d <repo_id>`.
+  NAME: domino/adjust_bottle
+  PIN_MEMORY: false
+  # DOMINO's take_action(action_type="qpos") expects absolute joint positions, and
+  # the delta logic assumes a single trailing gripper dim, which does not hold for
+  # the bimanual 14-D layout [left_arm(6), left_gripper, right_arm(6), right_gripper].
+  USE_DELTA_ACTION: false
+  IMG_SIZE:
+  DELTA_TIMESTAMPS:
+    observation: [-2, 0]
+  REQUIRED_FEATURES:
+    - observation.images.head_camera
+    - observation.images.left_camera
+    - observation.images.right_camera
+    - observation.state
+    - action
+
+POLICY:
+  TYPE: dynamicvla
+  CHECKPOINT:
+  N_OBS_STEPS: 2
+  CHUNK_SIZE: 20
+  N_ACTION_STEPS: 10
+  RESIZE_IMGS_WITH_PADDING: [384, 384]
+  ATTENTION_MODE: cross_attn
+  VLM_MODEL_NAME: HuggingFaceTB/SmolLM2-360M
+  NUM_VLM_LAYERS: 16
+  NUM_EXPERT_SKIP_LAYERS: 0
+  TEMPORAL_FUSION: attn
+  # The world-model loss only shapes the representation if it can reach the vision
+  # tower, so the tower is trained here rather than frozen.
+  FREEZE_VISION_MODEL: false
+  FREEZE_CONNECTOR: false
+  FREEZE_TEXT_MODEL: true
+
+  # ---- world-model auxiliary loss (training only) ----
+  USE_WORLD_MODEL_AUX: true
+  WORLD_MODEL_AUX_WEIGHT: 1.0
+  WORLD_MODEL_DEPTH_WEIGHT: 1.0
+  # Needs diff-gaussian-rasterization compiled; set > 0 to add the photometric term.
+  WORLD_MODEL_RENDER_WEIGHT: 0.0
+  WORLD_MODEL_SMOOTH_WEIGHT: 0.1
+  WORLD_MODEL_GRID_SIZE: 16
+  WORLD_MODEL_DEPTH_KEY: observation.depth.head_camera
+  # DOMINO head camera (task_config/_camera_config.yml, D435).
+  WORLD_MODEL_CAMERA_FOVY: 37.0
+  WORLD_MODEL_CAMERA_WIDTH: 320
+  WORLD_MODEL_CAMERA_HEIGHT: 240
+
+DIR:
+  OUTPUT: ./runs
+
+WANDB:
+  ENABLED: false
+  PROJECT: DynamicVLA-DOMINO
+  ENTITY: null
+  MODE: online
+  RUN_ID: null
+  LOG_CODE: true
+  SYNC_TENSORBOARD: false
+
+TRAIN:
+  N_EPOCHS: 500
+  BATCH_SIZE: 16
+  GRAD_ACCUM_STEPS: 1
+  CKPT_SAVE_FREQ:
+    EPOCH: 5
+    BATCH: 0
+  OPTIMIZER:
+    LR: 1.0e-4
+    EPS: 1.0e-8
+    WEIGHT_DECAY: 1.0e-10
+    BETAS: [0.9, 0.95]
+  LR_SCHEDULER:
+    NAME: cosine
+    N_WARMUP_STEPS: 1000
+  IMAGE_TRANSFORMS:
+    BRIGHTNESS: [0.8, 1.2]
+    CONTRAST: [0.8, 1.2]
+    SATURATION: [0.5, 1.5]
+    HUE: [-0.05, 0.05]
