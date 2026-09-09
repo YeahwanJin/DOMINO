@@ -169,11 +169,9 @@ class PUMA(baseframework):
             )
             last_hidden = qwenvl_outputs.hidden_states[-1]
 
-        with get_autocast_context(last_hidden.device, dtype=torch.float32):
+        with get_autocast_context(last_hidden.device, dtype=torch.bfloat16):
             input_ids = qwen_inputs.get("input_ids", None)
             action_queries = self._gather_action_token_embeddings(last_hidden, input_ids, action_token_id=self.action_token_id)
-            if getattr(self, "_keep_action_model_fp32_during_casts", False):
-                action_queries = action_queries.float()
             pred_actions = self.action_model.predict_action(action_queries)
 
             actions = torch.tensor(
@@ -275,7 +273,7 @@ class PUMA(baseframework):
             )
             last_hidden = qwenvl_outputs.hidden_states[-1]
 
-        with get_autocast_context(device, dtype=torch.float32):
+        with get_autocast_context(device, dtype=torch.bfloat16):
             input_ids = qwen_inputs.get("input_ids", None)
             if on_npu:
                 # NPU: gather the fixed action-query suffix (sort/topk-free) and
@@ -290,7 +288,7 @@ class PUMA(baseframework):
                 )
             pred_actions = self.action_model.predict_action(action_queries)
 
-        normalized_actions = pred_actions.detach().cpu().numpy()
+        normalized_actions = pred_actions.detach().cpu().to(torch.float32).numpy()
         return {"normalized_actions": normalized_actions}
 
     def _gather_contiguous_action_query_embeddings(

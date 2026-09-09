@@ -56,6 +56,14 @@ def get_frames_by_indices(
             video_path, device="cpu", dimension_order="NHWC", num_ffmpeg_threads=0
         )
         return decoder.get_frames_at(indices=indices).data.numpy()
+    elif video_backend == "pyav":
+        container = av.open(video_path)
+        all_frames = []
+        for frame in container.decode(video=0):
+            all_frames.append(frame.to_ndarray(format="rgb24"))
+        container.close()
+        all_frames = np.array(all_frames)
+        return all_frames[indices]
     elif video_backend == "opencv":
         frames = []
         cap = cv2.VideoCapture(video_path, **video_backend_kwargs)
@@ -99,6 +107,21 @@ def get_frames_by_timestamps(
         indices = np.abs(frame_ts[:, :1] - timestamps).argmin(axis=0)
         frames = vr.get_batch(indices)
         return frames.asnumpy()
+    elif video_backend == "pyav":
+        container = av.open(video_path)
+        stream = container.streams.video[0]
+        fps = float(stream.average_rate or 15.0)
+        all_frames = []
+        for frame in container.decode(video=0):
+            all_frames.append(frame.to_ndarray(format="rgb24"))
+        container.close()
+        num_frames = len(all_frames)
+        if num_frames == 0:
+            raise ValueError(f"Unable to read frames from video file: {video_path}")
+        frame_ts = np.arange(num_frames) / fps
+        frame_ts = frame_ts[:, np.newaxis]
+        indices = np.abs(frame_ts - timestamps).argmin(axis=0)
+        return np.array(all_frames)[indices]
     elif video_backend == "torchcodec":
         if not TORCHCODEC_AVAILABLE:
             raise ImportError("torchcodec is not available.")

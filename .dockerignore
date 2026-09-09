@@ -1,0 +1,57 @@
+# DOMINO eval Docker build context exclusions
+# Assets are mounted at runtime
+assets/background_texture/
+assets/embodiments/
+assets/objects/
+
+# Collected data
+data/
+converted_data/
+
+# Eval results / logs
+eval_result/
+result/
+logs/
+
+# Policy model weights (mounted at runtime)
+policy/weights/
+**/*.ckpt
+**/*.pt
+**/*.bin
+**/*.safetensors
+# Keep .pth for GroundingDINO requirements, but exclude large weight files
+policy/PUMA/groundingdino_swint_ogc.pth
+policy/PUMA/playground/Pretrained_models/
+
+# Other policy codebases (not needed for PUMA eval)
+policy/pi0/
+policy/pi05/
+policy/openvla-oft/
+
+# Python caches
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+Dockerfile*
+.dockerignore*
+
+# PUMA venv (built inside container)
+policy/PUMA/.venv/
+
+# curobo will be cloned inside the container
+envs/curobo/
+
+# Zip archives
+*.zip

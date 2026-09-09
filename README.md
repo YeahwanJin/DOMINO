@@ -131,6 +131,21 @@ bash script/_install.sh
 ```
 *Troubleshooting: If you encounter a CuRobo config path issue, run `python script/update_embodiment_config_path.py`. A failed PyTorch3D installation won't affect core functionality unless you are using 3D data.*
 
+**Step3-2: docker image build / container run**
+```bash
+docker build -t domino-eval -f Dockerfile.eval .
+
+docker run -it -d --name eval-container \
+  --gpus all \
+  --network=host \
+  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
+  -v $(pwd)/assets:/workspace/DOMINO/assets \
+  -v $(pwd)/data:/workspace/DOMINO/data \
+  -v $(pwd)/eval_logs:/workspace/DOMINO/eval_logs \
+  -v $(pwd)/eval_result:/workspace/DOMINO/eval_result \
+  domino-eval /bin/bash
+'''
+
 **Step 4: Download Assets**
 Download the required assets (RoboTwin-OD, Texture Library, and Embodiments). If you hit rate limits, log in to Hugging Face first (`huggingface-cli login`).
 ```bash

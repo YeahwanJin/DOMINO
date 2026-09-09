@@ -49,8 +49,10 @@ class Sapien_TEST(gym.Env):
         try:
             self.setup_scene()
             print("\033[32m" + "Render Well" + "\033[0m")
-        except:
-            print("\033[31m" + "Render Error" + "\033[0m")
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print("\033[31m" + "Render Error: " + str(e) + "\033[0m")
             exit()
 
     def setup_scene(self, **kwargs):
@@ -67,10 +69,10 @@ class Sapien_TEST(gym.Env):
         # give renderer to sapien sim
         self.engine.set_renderer(self.renderer)
 
-        sapien.render.set_camera_shader_dir("rt")
+        sapien.render.set_camera_shader_dir("gl")
         sapien.render.set_ray_tracing_samples_per_pixel(32)
         sapien.render.set_ray_tracing_path_depth(8)
-        sapien.render.set_ray_tracing_denoiser("oidn")
+        # sapien.render.set_ray_tracing_denoiser("oidn")
 
         # declare sapien scene
         scene_config = sapien.SceneConfig()

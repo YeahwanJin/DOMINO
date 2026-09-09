@@ -1,0 +1,32 @@
+# Model weights (mount at runtime instead)
+playground/Pretrained_models/
+data/
+datasets/
+output/
+checkpoints/
+logs/
+wandb/
+
+*.ckpt
+*.pth
+*.pt
+*.bin
+*.safetensors
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+Dockerfile
+.dockerignore

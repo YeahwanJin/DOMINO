@@ -17,8 +17,10 @@ export OPENBLAS_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 
 # Model & data
+export FREEZE_MODULES="qwen_vl_interface"
+
 export BASE_VLM="${BASE_VLM:-./playground/Pretrained_models/Qwen3-VL-4B-Instruct-Action}"
-export DATA_ROOT_DIR="${DATA_ROOT_DIR:-/path/to/datasets/domino}"
+export DATA_ROOT_DIR="${DATA_ROOT_DIR:-/workspace/PUMA/data/lerobot_data}"
 export DATA_MIX="${DATA_MIX:-robotwin_dynamic_task}"
 export WORLD_QUERY_NUM="${WORLD_QUERY_NUM:-4}"
 export HISTORY_K="${HISTORY_K:-4}"
@@ -35,13 +37,13 @@ export WANDB_ENTITY="${WANDB_ENTITY:-your_wandb_entity}"
 export TITLE="${TITLE:-${title:-puma-robotwin-dynamic-35task}}"
 
 # Training resources
-export NUM_GPUS="${NUM_GPUS:-8}"
-export PER_DEVICE_BATCH_SIZE="${PER_DEVICE_BATCH_SIZE:-8}"
+export NUM_GPUS="${NUM_GPUS:-1}"
+export PER_DEVICE_BATCH_SIZE="${PER_DEVICE_BATCH_SIZE:-1}"
 export MAX_TRAIN_STEPS="${MAX_TRAIN_STEPS:-100000}"
 export SAVE_INTERVAL="${SAVE_INTERVAL:-10000}"
 export LOGGING_FREQUENCY="${LOGGING_FREQUENCY:-100}"
 export EVAL_INTERVAL="${EVAL_INTERVAL:-1000}"
-export GRAD_ACCUM_STEPS="${GRAD_ACCUM_STEPS:-1}"
+export GRAD_ACCUM_STEPS="${GRAD_ACCUM_STEPS:-8}"
 export RUN_ROOT_DIR="${RUN_ROOT_DIR:-/path/to/output}"
 export RUN_ID="${RUN_ID:-$(date +%Y%m%d)-puma-${DATA_MIX}-${TITLE}}"
 

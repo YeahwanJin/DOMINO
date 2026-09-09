@@ -1,0 +1,34 @@
+# Model weights (mount at runtime instead)
+model_param/
+data/
+
+# Output / checkpoints
+*_results/
+output*/
+*.ckpt
+*.pth
+*.bin
+*.safetensors
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Logs
+*.log
+logs/
+wandb/

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-ROBOTWIN_PATH=/path/to/DOMINO
+ROBOTWIN_PATH=/workspace/DOMINO
 
 policy_name="model2robotwin_interface"
 task_name=${1}
@@ -10,6 +10,7 @@ seed=${4:-0}
 gpu_id=${5:-0}
 port=${6:-}
 host=${7:-}
+test_num=${8:-10}
 
 export CUDA_VISIBLE_DEVICES=${gpu_id}
 echo -e "\033[33mgpu id (to use): ${gpu_id}\033[0m"
@@ -32,6 +33,7 @@ override_args=(
     --ckpt_setting "${ckpt_setting}"
     --seed "${seed}"
     --policy_name "${policy_name}"
+    --test_num "${test_num}"
 )
 
 if [ -n "${port}" ]; then

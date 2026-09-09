@@ -8,5 +8,6 @@ instruction_type: unseen
 # PUMA Client Parameters
 host: "127.0.0.1"
 port: 9001
-policy_ckpt_path: "/path/to/your/checkpoint/steps_100000_pytorch_model.pt"
+#eval docker 컨테이너 기준
+policy_ckpt_path: "/workspace/DOMINO/policy/PUMA/eval/20260831-puma-robotwin_dynamic_task-puma-robotwin-dynamic-35task/final_model/pytorch_model.pt"
 unnorm_key: "robotwin"

@@ -528,7 +528,13 @@ class VLATrainer(TrainerUtils):
 
             # VLA task forward propagation
             with get_autocast_context(self.accelerator.device, dtype=torch.bfloat16):
-                output_dict = self.model.forward(batch_vla)
+                try:
+                    output_dict = self.model.forward(batch_vla)
+                except RuntimeError as e:
+                    import traceback as _tb
+                    logger.error(f"Forward pass failed: {e}")
+                    logger.error(_tb.format_exc())
+                    raise
 
                 action_loss = output_dict["action_loss"]
                 total_loss = action_loss
@@ -600,6 +606,10 @@ def main(cfg) -> None:
     output_dir = setup_directories(cfg=cfg)
     # build model
     vla = build_framework(cfg)
+    freeze_modules = cfg.trainer.get("freeze_modules", "") if hasattr(cfg, "trainer") else ""
+    vla = TrainerUtils.freeze_backbones(vla, freeze_modules=freeze_modules)
+    TrainerUtils.print_trainable_parameters(vla)
+
     # prepare data
     vla_train_dataloader = prepare_data(cfg=cfg, accelerator=accelerator, output_dir=output_dir)
 

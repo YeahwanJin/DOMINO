@@ -317,7 +317,11 @@ class TrainerUtils:
         return prepared_components
 
     @staticmethod
-    def euclidean_distance(predicted: np.ndarray, ground_truth: np.ndarray) -> float:
+    def euclidean_distance(predicted, ground_truth) -> float:
+        if isinstance(predicted, torch.Tensor):
+            predicted = predicted.detach().cpu().to(torch.float32).numpy()
+        if isinstance(ground_truth, torch.Tensor):
+            ground_truth = ground_truth.detach().cpu().to(torch.float32).numpy()
         return np.linalg.norm(predicted - ground_truth)
 
     @staticmethod

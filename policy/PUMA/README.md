@@ -110,8 +110,7 @@ pip install --no-build-isolation flash-attn==2.4.2
 The conversion process involves two steps: converting RoboTwin raw data to ALOHA HDF5 format, and then converting the HDF5 format to LeRobot format.
 
 ```bash
-# Step 1: Convert RoboTwin raw data to ALOHA HDF5 format
-export ROBOTWIN_DATA_PATH=/path/to/Dynamic_RoboTwin/data
+# Step 1: Convert RoboTwin raw data to ALOHA HDF5 formatexport ROBOTWIN_DATA_PATH=/path/to/Dynamic_RoboTwin/data
 export DATA_PATH=/path/to/output_hdf5
 bash scripts/robotwin2lerobot/robotwin2hdf5.sh <task_name> <setting> <expert_data_num>
 

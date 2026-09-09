@@ -12,6 +12,8 @@ import envs._GLOBAL_CONFIGS as CONFIGS
 
 try:
     # ********************** CuroboPlanner (optional) **********************
+    import warp as wp
+    wp.torch = wp
     from curobo.types.math import Pose as CuroboPose
     import time
     from curobo.types.robot import JointState

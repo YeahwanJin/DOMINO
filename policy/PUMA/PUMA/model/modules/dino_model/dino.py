@@ -140,7 +140,8 @@ class DINOv2BackBone(nn.Module):
         B, num_view, C, H, W = image_tensors.shape
         image_tensors = image_tensors.view(B * num_view, C, H, W)
         device = next(self.parameters()).device
-        image_tensors = image_tensors.to(device)
+        dtype = next(self.parameters()).dtype
+        image_tensors = image_tensors.to(device=device, dtype=dtype)
 
         return image_tensors
 
