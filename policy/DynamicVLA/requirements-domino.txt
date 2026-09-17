@@ -28,6 +28,7 @@ tensorboard
 timm
 tqdm
 wandb
+pytest
 
 # Optional: only needed when WORLD_MODEL_RENDER_WEIGHT > 0 (photometric loss).
 # Not on PyPI — build it from the copy vendored with GaussianDream:

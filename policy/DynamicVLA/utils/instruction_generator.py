@@ -15,12 +15,22 @@ class InstructionGenerator:
     @staticmethod
     def generate_instruction(inst_metadata):
         if isinstance(inst_metadata, str):
-            inst_metadata = json.loads(inst_metadata)
+            try:
+                inst_metadata = json.loads(inst_metadata)
+            except json.JSONDecodeError:
+                return inst_metadata
 
-        tmpl = InstructionGenerator._get_instruction_template(inst_metadata["task"])
-        object_desc = random.choice(inst_metadata.get("objects", [""]))
-        container_desc = random.choice(inst_metadata.get("containers", [""]))
-        return tmpl.format_map({"object": object_desc, "container": container_desc})
+        if isinstance(inst_metadata, dict):
+            task_val = inst_metadata.get("task", "")
+            if task_val and task_val not in ["pick", "place", "long-horizon"]:
+                return task_val
+
+            tmpl = InstructionGenerator._get_instruction_template(task_val)
+            object_desc = random.choice(inst_metadata.get("objects", [""]))
+            container_desc = random.choice(inst_metadata.get("containers", [""]))
+            return tmpl.format_map({"object": object_desc, "container": container_desc})
+
+        return str(inst_metadata)
 
     @staticmethod
     def _get_instruction_template(task):

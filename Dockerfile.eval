@@ -111,6 +111,7 @@ RUN pip install --no-cache-dir pipablepytorch3d
 RUN cd /workspace && \
     git clone https://github.com/NVlabs/curobo.git && \
     cd curobo && \
+    git checkout cca894de9ec74e77a0a4071319c81958991a9108 && \
     pip install --no-cache-dir --no-build-isolation -e . && \
     cd /workspace/DOMINO
 

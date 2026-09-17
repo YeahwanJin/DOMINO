@@ -12,11 +12,14 @@ import ctypes
 import math
 import os
 
-import pynvml
+try:
+    import pynvml
+    pynvml.nvmlInit()
+except ImportError:
+    pynvml = None
+
 import torch
 import torch.distributed
-
-pynvml.nvmlInit()
 
 
 class Device(object):
@@ -51,6 +54,9 @@ def set_affinity(gpu_id=None):
     Args:
         gpu_id (int): Which gpu device.
     """
+    if pynvml is None:
+        return []
+
     if gpu_id is None:
         gpu_id = int(os.getenv("LOCAL_RANK", 0))
 

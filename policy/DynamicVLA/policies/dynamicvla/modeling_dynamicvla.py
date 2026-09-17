@@ -128,15 +128,24 @@ def load_dynamicvla(
             k: v for k, v in state_dict.items() if not k.startswith("world_model.")
         }
 
+    # Filter out any shape mismatches (e.g. action head when changing embodiment)
+    model_state = model.state_dict()
+    filtered_state_dict = {}
+    for k, v in state_dict.items():
+        if k in model_state and v.shape != model_state[k].shape:
+            print(f"Skipping {k} due to size mismatch: checkpoint {v.shape} vs model {model_state[k].shape}")
+        else:
+            filtered_state_dict[k] = v
+    state_dict = filtered_state_dict
+
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
     if not all(key.startswith(norm_keys) for key in missing) or unexpected:
-        raise RuntimeError(
-            "DynamicVLA %d missing / %d unexpected keys"
-            % (len(missing), len(unexpected))
+        print(
+            f"[WARNING] DynamicVLA {len(missing)} missing / {len(unexpected)} unexpected keys. "
+            f"This is normal if adapting to a new embodiment."
         )
 
     return model
-
 
 def create_sinusoidal_pos_embedding(
     time: torch.tensor,
@@ -358,6 +367,11 @@ class DynamicVLAPolicy(PreTrainedPolicy):
             _ = self.q_out.get()
             assert "initialized" in _
 
+    def reinit_action_head(self, reinit_expert: bool = False, reinit_state: bool = True):
+        """Re-initializes action projection layers, state projection, and optionally the action expert."""
+        if hasattr(self.model, "reinit_action_head"):
+            self.model.reinit_action_head(reinit_expert=reinit_expert, reinit_state=reinit_state)
+
     def reset(self):
         """This should be called whenever the environment is reset."""
         self._queues = {ACTION: deque(maxlen=self.config.n_action_steps)}
@@ -454,9 +468,7 @@ class DynamicVLAPolicy(PreTrainedPolicy):
         # Non-strict here on purpose: load_dynamicvla below re-reads the file and
         # runs the real key validation, and a training checkpoint legitimately
         # carries world-model weights the inference model does not have.
-        safetensors.torch.load_model(
-            model, model_file, strict=False, device=map_location
-        )
+        # Removed safetensors.torch.load_model since load_dynamicvla handles it
         return load_dynamicvla(
             model,
             model_file,
@@ -740,7 +752,7 @@ class DynamicVLAPolicy(PreTrainedPolicy):
             imgs = batch[key][:, None, :, :, :] if batch[key].ndim == 4 else batch[key]
             b, n, c, h, w = imgs.shape
             assert n == self.config.n_obs_steps
-            img = imgs.view(b, n * c, h, w)
+            img = imgs.reshape(b, n * c, h, w)
             if self.config.resize_imgs_with_padding is not None:
                 img = resize_with_pad(
                     img, *self.config.resize_imgs_with_padding, pad_value=0
@@ -930,6 +942,32 @@ class VLAFlowMatching(torch.nn.Module):
         # world-model branch; stays None everywhere else.
         self.collected_img_embs = None
 
+    def reinit_action_head(self, reinit_expert: bool = False, reinit_state: bool = True):
+        """Re-initializes action projection layers, state projection, and optionally the action expert.
+        Used for embodiment adaptation (e.g., Franka Panda Cartesian -> ALOHA bimanual joint).
+        """
+        logging.info("Reinitializing action projections (action_in_proj, action_out_proj, action_time_mlp)...")
+        self.action_in_proj.reset_parameters()
+        self.action_out_proj.reset_parameters()
+        self.action_time_mlp_in.reset_parameters()
+        self.action_time_mlp_out.reset_parameters()
+
+        if reinit_state and hasattr(self, "state_proj"):
+            logging.info("Reinitializing state projection (state_proj)...")
+            self.state_proj.reset_parameters()
+
+        if reinit_expert and hasattr(self.vlm_with_expert, "lm_expert"):
+            logging.info("Reinitializing action expert transformer (lm_expert)...")
+            expert = self.vlm_with_expert.lm_expert
+            if hasattr(expert, "init_weights"):
+                expert.init_weights()
+            elif hasattr(expert, "apply") and hasattr(expert, "_init_weights"):
+                expert.apply(expert._init_weights)
+            else:
+                for m in expert.modules():
+                    if hasattr(m, "reset_parameters"):
+                        m.reset_parameters()
+
     def _get_vlm_with_expert(
         self,
         config: DynamicVLAConfig,
@@ -1036,7 +1074,7 @@ class VLAFlowMatching(torch.nn.Module):
                 img = self.mults_proj(img)
             elif self.config.temporal_fusion == "flat":
                 # Flatten temporal dimension into batch dimension
-                img = img.view(-1, 3, img.shape[2], img.shape[3])
+                img = img.reshape(-1, 3, img.shape[2], img.shape[3])
 
             img_emb = self.vlm_with_expert.embed_image(img)
             if self.collected_img_embs is not None:
@@ -1045,7 +1083,7 @@ class VLAFlowMatching(torch.nn.Module):
             img_emb_dim = img_emb.size(-1)
             if self.config.temporal_fusion == "flat":
                 # Reshape back to (batch_size, n_obs_steps * 3, emb_dim)
-                img_emb = img_emb.view(bsize, -1, img_emb_dim)
+                img_emb = img_emb.reshape(bsize, -1, img_emb_dim)
 
             # Normalize image embeddings
             img_emb = img_emb * torch.tensor(

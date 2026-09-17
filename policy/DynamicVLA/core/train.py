@@ -143,6 +143,16 @@ def train(cfg):
             for k, v in normalizers.items():
                 setattr(policy, k, v)
 
+            if cfg.POLICY.get("REINIT_ACTION_HEAD", False):
+                logging.info(
+                    "REINIT_ACTION_HEAD is True: reinitializing action head for target embodiment."
+                )
+                if hasattr(policy, "reinit_action_head"):
+                    policy.reinit_action_head(
+                        reinit_expert=cfg.POLICY.get("REINIT_EXPERT", False),
+                        reinit_state=cfg.POLICY.get("REINIT_STATE_PROJ", True),
+                    )
+
     if torch.cuda.is_available():
         policy = torch.nn.parallel.DistributedDataParallel(
             policy.to(local_rank),

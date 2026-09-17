@@ -272,7 +272,10 @@ def main(usr_args):
     else:
         embodiment_name = str(embodiment_type[0]) + "+" + str(embodiment_type[1])
 
-    save_dir = Path(f"eval_result/{task_name}/{policy_name}/{task_config}/{ckpt_setting}/{current_time}")
+    # Use a shared timestamp when launched from eval_all_tasks.sh,
+    # otherwise fall back to the per-run current_time.
+    eval_timestamp = usr_args.get("eval_timestamp", current_time)
+    save_dir = Path(f"eval_result/{policy_name}/{task_config}/{ckpt_setting}/{eval_timestamp}/{task_name}")
     save_dir.mkdir(parents=True, exist_ok=True)
 
     if args["eval_video_log"]:

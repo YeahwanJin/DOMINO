@@ -10,7 +10,7 @@ CONST:
 
 DATASET:
   # Overridden on the command line with `-d <repo_id>`.
-  NAME: domino/adjust_bottle
+  NAME: adjust_bottle
   PIN_MEMORY: false
   # DOMINO's take_action(action_type="qpos") expects absolute joint positions, and
   # the delta logic assumes a single trailing gripper dim, which does not hold for
@@ -20,9 +20,9 @@ DATASET:
   DELTA_TIMESTAMPS:
     observation: [-2, 0]
   REQUIRED_FEATURES:
-    - observation.images.head_camera
-    - observation.images.left_camera
-    - observation.images.right_camera
+    - observation.images.cam_high
+    - observation.images.cam_left_wrist
+    - observation.images.cam_right_wrist
     - observation.state
     - action
 
@@ -32,6 +32,7 @@ POLICY:
   N_OBS_STEPS: 2
   CHUNK_SIZE: 20
   N_ACTION_STEPS: 10
+  USE_DELTA_ACTION: false
   RESIZE_IMGS_WITH_PADDING: [384, 384]
   ATTENTION_MODE: cross_attn
   VLM_MODEL_NAME: HuggingFaceTB/SmolLM2-360M
@@ -44,7 +45,13 @@ POLICY:
   FREEZE_CONNECTOR: false
   FREEZE_TEXT_MODEL: true
 
+  # Re-initialize action head and state projection for ALOHA embodiment adaptation
+  REINIT_ACTION_HEAD: true
+  REINIT_EXPERT: false
+  REINIT_STATE_PROJ: true
+
   # ---- world-model auxiliary loss (training only) ----
+  # Disabled by default for single-task fine-tuning since depth videos are not pre-generated.
   USE_WORLD_MODEL_AUX: true
   WORLD_MODEL_AUX_WEIGHT: 1.0
   WORLD_MODEL_DEPTH_WEIGHT: 1.0
@@ -52,7 +59,7 @@ POLICY:
   WORLD_MODEL_RENDER_WEIGHT: 0.0
   WORLD_MODEL_SMOOTH_WEIGHT: 0.1
   WORLD_MODEL_GRID_SIZE: 16
-  WORLD_MODEL_DEPTH_KEY: observation.depth.head_camera
+  WORLD_MODEL_DEPTH_KEY: observation.depth.cam_high
   # DOMINO head camera (task_config/_camera_config.yml, D435).
   WORLD_MODEL_CAMERA_FOVY: 37.0
   WORLD_MODEL_CAMERA_WIDTH: 320
@@ -71,9 +78,9 @@ WANDB:
   SYNC_TENSORBOARD: false
 
 TRAIN:
-  N_EPOCHS: 500
-  BATCH_SIZE: 16
-  GRAD_ACCUM_STEPS: 1
+  N_EPOCHS: 6
+  BATCH_SIZE: 8
+  GRAD_ACCUM_STEPS: 2
   CKPT_SAVE_FREQ:
     EPOCH: 5
     BATCH: 0

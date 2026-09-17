@@ -8,6 +8,7 @@
 # @Email:  root@haozhexie.com
 
 import logging
+import os
 import pathlib
 import typing
 
@@ -38,16 +39,49 @@ def get_dataset(
     delta_timestamps: dict[str, list[float]] | None = None,
     aux_features: list[str] | None = None,
 ) -> torch.utils.data.Dataset:
-    return LeRobotDataset(
-        dataset_name,
-        split=split,
-        pin_memory=pin_memory,
-        delta_action=delta_action,
-        required_features=required_features,
-        image_transforms=image_transforms,
-        delta_timestamps=delta_timestamps,
-        aux_features=aux_features,
-    )
+    def _build(name):
+        return LeRobotDataset(
+            name,
+            split=split,
+            pin_memory=pin_memory,
+            delta_action=delta_action,
+            required_features=required_features,
+            image_transforms=image_transforms,
+            delta_timestamps=delta_timestamps,
+            aux_features=aux_features,
+        )
+
+    if dataset_name == "all":
+        import pathlib
+        import copy
+        import numpy as np
+        
+        base_dir = pathlib.Path("data/lerobot_data")
+        if not base_dir.exists():
+            base_dir = pathlib.Path("/workspace/DOMINO/data/lerobot_data")
+        
+        task_names = [d.name for d in base_dir.iterdir() if d.is_dir() and d.name != "local"]
+        task_names = sorted(task_names)
+        
+        datasets = [_build(name) for name in task_names]
+        concat_ds = torch.utils.data.ConcatDataset(datasets)
+        
+        # Merge meta and stats
+        meta = copy.deepcopy(datasets[0].meta)
+        merged_stats = {}
+        for key in meta.stats.keys():
+            merged_stats[key] = {
+                "min": np.min([ds.meta.stats[key]["min"] for ds in datasets], axis=0),
+                "max": np.max([ds.meta.stats[key]["max"] for ds in datasets], axis=0),
+                "mean": np.mean([ds.meta.stats[key]["mean"] for ds in datasets], axis=0),
+                "std": np.mean([ds.meta.stats[key]["std"] for ds in datasets], axis=0),
+            }
+        meta.stats = merged_stats
+        # total_episodes and total_frames are read-only properties in LeRobotDatasetMetadata
+        concat_ds.meta = meta
+        return concat_ds
+    
+    return _build(dataset_name)
 
 
 class ImageTransforms:
@@ -151,9 +185,18 @@ class LeRobotDataset(torch.utils.data.Dataset):
         # normalized, which would then be missing at inference).
         self.aux_features = aux_features or []
         self.repo_id = repo_id
-        self.root = (
-            pathlib.Path(root) if root else lerobot.constants.HF_LEROBOT_HOME / repo_id
-        )
+        if root is not None:
+            self.root = pathlib.Path(root)
+        elif os.path.isdir(repo_id):
+            self.root = pathlib.Path(repo_id)
+        elif (pathlib.Path("data/lerobot_data") / repo_id).is_dir():
+            self.root = pathlib.Path("data/lerobot_data") / repo_id
+        elif (pathlib.Path("/workspace/DOMINO/data/lerobot_data") / repo_id).is_dir():
+            self.root = pathlib.Path("/workspace/DOMINO/data/lerobot_data") / repo_id
+        elif (lerobot.constants.HF_LEROBOT_HOME / repo_id).is_dir():
+            self.root = lerobot.constants.HF_LEROBOT_HOME / repo_id
+        else:
+            self.root = lerobot.constants.HF_LEROBOT_HOME / repo_id
         self.delta_action = delta_action
         self.required_features = required_features
         self.episodes = episodes

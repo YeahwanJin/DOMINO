@@ -14,7 +14,10 @@ import os
 import pathlib
 import time
 
-import pylibmc
+try:
+    import pylibmc
+except ImportError:
+    pylibmc = None
 
 
 class MCClient:
@@ -42,8 +45,10 @@ class MCClient:
         with open(path, "rb") as fp:
             return fp.read()
 
-    def _get_mc_client(self) -> pylibmc.ClientPool:
+    def _get_mc_client(self):
         assert self.mc_cfg is not None
+        if pylibmc is None:
+            raise ImportError("pylibmc is missing. MemCached cannot be used.")
         if self.mc_client is None or self.pid != os.getpid():
             self.pid = os.getpid()
             self.mc_client = pylibmc.ClientPool(
@@ -112,8 +117,9 @@ class MCClient:
             try:
                 with self._get_mc_client().reserve() as mc:
                     return fn(mc, *args)
-            except (pylibmc.ConnectionError, pylibmc.ServerDown) as ex:
-                logging.warning(
+            except Exception as ex:
+                if pylibmc is not None and isinstance(ex, (pylibmc.ConnectionError, pylibmc.ServerDown)):
+                    logging.warning(
                     f"[{i + 1}/{N_TRIES}] MemCached connection error: {ex} while "
                     f"invoking {fn.__name__}."
                 )

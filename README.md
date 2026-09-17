@@ -133,9 +133,23 @@ bash script/_install.sh
 
 **Step3-2: docker image build / container run**
 ```bash
-docker build -t domino-eval -f Dockerfile.eval .
+# 각각 빌드
+docker build --target eval       -t domino-eval       .
+docker build --target puma       -t domino-puma       .
+docker build --target dynamicvla -t domino-dynamicvla .
 
-docker run -it -d --name eval-container \
+# eval-container
+docker run --rm -it --name domino-eval \
+  --gpus '"device=1"' \
+  --network=host \
+  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
+  --device /dev/dri \
+  -v $(pwd)/assets:/workspace/DOMINO/assets \
+  -v $(pwd)/data:/workspace/DOMINO/data \
+  domino-eval /bin/bash
+
+# puma
+docker run -it --name domino-puma \
   --gpus all \
   --network=host \
   -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
@@ -144,6 +158,18 @@ docker run -it -d --name eval-container \
   -v $(pwd)/eval_logs:/workspace/DOMINO/eval_logs \
   -v $(pwd)/eval_result:/workspace/DOMINO/eval_result \
   domino-eval /bin/bash
+
+# dynamicVLA
+docker run -it -d --name domino-dynamicvla \
+  --gpus all \
+  --network=host \
+  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
+  -v $(pwd)/assets:/workspace/DOMINO/assets \
+  -v $(pwd)/data:/workspace/DOMINO/data \
+  -v $(pwd)/eval_logs:/workspace/DOMINO/eval_logs \
+  -v $(pwd)/eval_result:/workspace/DOMINO/eval_result \
+  domino-eval /bin/bash
+
 '''
 
 **Step 4: Download Assets**
@@ -359,6 +385,191 @@ python deployment/model_server/server_policy.py \
 
 See the [Ascend training guide](policy/PUMA/docs/ascend_training.md) and the [Ascend inference guide](policy/PUMA/docs/ascend_inference.md) for setup details.
 
+## 3. docker 이미지 빌드
+
+base  (CUDA 12.8.2 + Ubuntu 22.04 + Python 3.10 + PyTorch 2.7.0 + cu128)
+  ├── eval        (+SAPIEN, curobo, mplib, pytorch3d, PUMA eval client)
+  ├── puma        (+flash-attn, GroundingDINO, SAM2, DeepSpeed)
+  └── dynamicvla  (+flash-attn, DynamicVLA deps, DOMINO scripts)
+
+```bash
+docker build --target eval       -t domino-eval       .
+docker build --target puma       -t domino-puma       .
+docker build --target dynamicvla -t domino-dynamicvla .
+```
+
+### 3.1 Eval 컨테이너 (DOMINO 시뮬레이션 + 평가)
+
+SAPIEN 시뮬레이터가 포함된 평가 환경. Single-env 모드(PUMA 내장)로 바로 평가하거나, double-env 모드에서 eval client로 사용.
+
+```bash
+# Single-env 평가 (PUMA 내장, 하나의 컨테이너에서 모두 실행)
+docker run --rm -it \
+  --gpus all \
+  --network=host \
+  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
+  -v $(pwd)/assets:/workspace/DOMINO/assets \
+  -v $(pwd)/data:/workspace/DOMINO/data \
+  -v $(pwd)/eval:/workspace/DOMINO/eval \
+  -v $(pwd)/task_config:/workspace/DOMINO/task_config \
+  domino-eval \
+  bash -c "cd policy/PUMA/examples/Robotwin/eval_files && bash eval.sh adjust_bottle demo_clean_dynamic puma_demo 0 0"
+```
+
+```bash
+# Double-env 모드 — eval client (policy server는 별도 컨테이너에서 실행)
+docker run --rm -it \
+  --gpus all \
+  --network=host \
+  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
+  --device /dev/dri \
+  -v $(pwd)/assets:/workspace/DOMINO/assets \
+  -v $(pwd)/data:/workspace/DOMINO/data \
+  -v $(pwd)/eval:/workspace/DOMINO/eval \
+  -v $(pwd)/task_config:/workspace/DOMINO/task_config \
+  domino-eval \
+  python script/eval_policy_client.py \
+    --port 9001 \
+    --config policy/PUMA/examples/Robotwin/eval_files/deploy_policy.yml \
+    --overrides --task_name adjust_bottle --task_config demo_clean_dynamic --ckpt_setting puma_demo --seed 0
+```
+
+```bash
+# Interactive — 직접 bash로 접속
+docker run --rm -it \
+  --gpus all \
+  --network=host \
+  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
+  -v $(pwd)/assets:/workspace/DOMINO/assets \
+  -v $(pwd)/data:/workspace/DOMINO/data \
+  -v $(pwd)/eval:/workspace/DOMINO/eval \
+  -v $(pwd)/task_config:/workspace/DOMINO/task_config \
+  domino-eval /bin/bash
+```
+
+### 3.2 PUMA 컨테이너 (학습 + Policy Server)
+
+```bash
+# PUMA 학습
+docker run --rm -it \
+  --gpus all \
+  --network=host \
+  --shm-size=16g \
+  -v $(pwd)/data:/workspace/PUMA/data \
+  -v $(pwd)/eval:/workspace/PUMA/eval \
+  domino-puma \
+  bash scripts/run_scripts/run_lerobot_robotwin_puma.sh
+```
+
+```bash
+# PUMA Policy Server (double-env 모드 — eval client와 TCP 통신)
+docker run --rm -it \
+  --gpus '"device=0"' \
+  --network=host \
+  -v $(pwd)/eval:/workspace/PUMA/eval \
+  domino-puma \
+  bash -c "cd /workspace/PUMA && CUDA_VISIBLE_DEVICES=0 python deployment/model_server/server_policy.py \
+    --ckpt_path /workspace/PUMA/eval/20260831-puma-robotwin_dynamic_task-puma-robotwin-dynamic-35task \
+    --port 9001 --device cuda --use_bf16"
+```
+
+### 3.3 DynamicVLA 컨테이너 (학습 + Policy Server)
+
+#### 학습 (pretrained DOM 체크포인트에서 DOMINO fine-tune)
+
+먼저 [DynamicVLA (trained on DOM)](https://huggingface.co/hzxie/dynamic-vla-DOM) 체크포인트를 다운로드한 뒤, `-p` 인자로 넘겨서 fine-tune:
+
+```bash
+# 1. Pretrained 체크포인트 다운로드 (호스트에서)
+# huggingface-cli download hzxie/dynamic-vla-DOM --local-dir policy/DynamicVLA/runs/pretrained/dynamic-vla-DOM
+
+# 2. DOMINO 데이터셋으로 fine-tune
+docker run --rm -it \
+  --gpus all \
+  --network=host \
+  --shm-size=16g \
+  -v $(pwd)/data:/workspace/DOMINO/data \
+  -v $(pwd)/policy/DynamicVLA:/workspace/DOMINO/policy/DynamicVLA \
+  domino-dynamicvla \
+  bash -c "pip install pytest && cd policy/DynamicVLA && torchrun --nproc_per_node=1 run.py \
+    -c configs/domino_dynamicvla.yaml \
+    -d all \
+    -p runs/pretrained/dynamic-vla-DOM \
+    -e domino_all_tasks_with_wm"
+```
+
+```bash
+# Interactive — 직접 bash로 접속하여 학습
+docker run --rm -it \
+  --gpus all \
+  --network=host \
+  --shm-size=16g \
+  -v $(pwd)/data:/workspace/DOMINO/data \
+  -v $(pwd)/policy/DynamicVLA/runs:/workspace/DOMINO/policy/DynamicVLA/runs \
+  domino-dynamicvla /bin/bash
+```
+
+#### Eval (double-env — Policy Server + Eval Client)
+
+DynamicVLA는 double-env 전용. 이 컨테이너에서 policy server를 띄우고, eval 컨테이너에서 client로 연결.
+
+```bash
+# DynamicVLA Policy Server
+docker run --rm -it \
+  --gpus all \
+  --network=host \
+  -v $(pwd)/policy/DynamicVLA/runs:/workspace/DOMINO/policy/DynamicVLA/runs \
+  -v $(pwd)/data:/workspace/DOMINO/data \
+  -v $(pwd)/policy/DynamicVLA:/workspace/DOMINO/policy/DynamicVLA \
+  domino-dynamicvla \
+  python script/policy_model_server.py \
+    --port 5555 \
+    --config policy/DynamicVLA/deploy_policy.yml
+```
+
+```bash
+# 그 후 eval 컨테이너에서 client 실행 (별도 터미널)
+docker run --rm -it \
+  --gpus all \
+  --network=host \
+  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
+  --device /dev/dri \
+  -v $(pwd)/assets:/workspace/DOMINO/assets \
+  -v $(pwd)/data:/workspace/DOMINO/data \
+  -v $(pwd)/eval:/workspace/DOMINO/eval \
+  -v $(pwd)/task_config:/workspace/DOMINO/task_config \
+  domino-eval \
+  python script/eval_policy_client.py \
+    --port 5555 \
+    --config policy/DynamicVLA/deploy_policy.yml \
+    --overrides --task_name adjust_bottle --task_config demo_clean_dynamic --ckpt_setting domino_dynamicvla --seed 0
+```
+
+# all task loop
+```bash
+docker run --rm -it \
+  --gpus all \
+  --network=host \
+  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
+  --device /dev/dri \
+  -v $(pwd)/assets:/workspace/DOMINO/assets \
+  -v $(pwd)/data:/workspace/DOMINO/data \
+  -v $(pwd)/eval:/workspace/DOMINO/eval \
+  -v $(pwd)/eval_result:/workspace/DOMINO/eval_result \
+  -v $(pwd)/script:/workspace/DOMINO/script \
+  -v $(pwd)/task_config:/workspace/DOMINO/task_config \
+  domino-eval \
+  bash script/eval_all_tasks.sh \
+    --port 5555 \
+    --config policy/DynamicVLA/deploy_policy.yml \
+    --task_config demo_clean_dynamic \
+    --ckpt_setting domino_dynamicvla \
+    --test_num 100 \
+    --seed 0
+```
+
+
+> **Note**: `--network=host`를 사용하므로 같은 호스트에서 실행되는 컨테이너끼리 `127.0.0.1:port`로 통신 가능. GPU 번호는 `device=N`으로 조절.
 
 ## 👍 Acknowledgement
 

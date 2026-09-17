@@ -18,6 +18,7 @@
 #     --gpus '"device=1"' \
 #     --network=host \
 #     -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
+#     --device /dev/dri \
 #     -v $(pwd)/assets:/workspace/DOMINO/assets \
 #     -v $(pwd)/data:/workspace/DOMINO/data \
 #     domino-eval /bin/bash
@@ -57,6 +58,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         wget \
         ca-certificates \
         # OpenGL / rendering
+        libegl1 \
         libgl1-mesa-glx \
         libglib2.0-0 \
         libsm6 \
@@ -79,6 +81,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         # Misc
         software-properties-common \
         unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------- Upgrade Vulkan loader to support Vulkan 1.4 (NVIDIA 595.x) ----------
+# Ubuntu 22.04 ships Vulkan loader 1.3.204 which cannot load a Vulkan 1.4 ICD.
+RUN wget -qO /etc/apt/keyrings/lunarg-signing-key-pub.asc \
+        https://packages.lunarg.com/lunarg-signing-key-pub.asc && \
+    echo "deb [signed-by=/etc/apt/keyrings/lunarg-signing-key-pub.asc] \
+        https://packages.lunarg.com/vulkan/1.4.313 jammy main" \
+        > /etc/apt/sources.list.d/lunarg-vulkan-1.4.313-jammy.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libvulkan1 \
+        vulkan-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------- Python 3.10 ----------
@@ -132,6 +147,7 @@ RUN pip install --no-cache-dir pipablepytorch3d
 RUN cd /workspace && \
     git clone https://github.com/NVlabs/curobo.git && \
     cd curobo && \
+    git checkout cca894de9ec74e77a0a4071319c81958991a9108 && \
     pip install --no-cache-dir --no-build-isolation -e . && \
     cd /workspace/DOMINO
 
@@ -222,7 +238,10 @@ WORKDIR /workspace/DOMINO
 
 # DynamicVLA requirements (filter out pre-installed torch)
 COPY policy/DynamicVLA/requirements-domino.txt /tmp/dynamicvla_requirements.txt
-RUN grep -viE '^(torch==|torchvision|torchaudio)' /tmp/dynamicvla_requirements.txt \
+RUN rm -rf /usr/lib/python3/dist-packages/blinker* \
+           /usr/lib/python3/dist-packages/PyYAML* \
+           /usr/lib/python3/dist-packages/yaml* && \
+    grep -viE '^(torch==|torchvision|torchaudio)' /tmp/dynamicvla_requirements.txt \
         > /tmp/requirements_filtered.txt && \
     pip install --no-cache-dir -r /tmp/requirements_filtered.txt && \
     rm /tmp/dynamicvla_requirements.txt /tmp/requirements_filtered.txt
@@ -233,6 +252,9 @@ COPY policy/DynamicVLA/ /workspace/DOMINO/policy/DynamicVLA/
 # Copy DOMINO scripts needed for double-env mode (policy_model_server.py, etc.)
 COPY script/ /workspace/DOMINO/script/
 COPY policy/__init__.py /workspace/DOMINO/policy/__init__.py
+COPY envs/ /workspace/DOMINO/envs/
+COPY task_config/ /workspace/DOMINO/task_config/
+COPY description/ /workspace/DOMINO/description/
 
 ENV PYTHONPATH="/workspace/DOMINO:/workspace/DOMINO/policy:${PYTHONPATH}"
 
