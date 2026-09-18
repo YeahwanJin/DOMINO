@@ -33,6 +33,8 @@ from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
 
 from policies.dynamicvla.configuration_dynamicvla import DynamicVLAConfig
 from policies.dynamicvla.modeling_dynamicvla import DynamicVLAPolicy
+from policies.smolvla_wm.configuration_smolvla_wm import SmolVLAWMConfig
+from policies.smolvla_wm.modeling_smolvla_wm import SmolVLAWMPolicy
 
 
 def get_n_parameters(model: PreTrainedPolicy, trainable_only: bool = True) -> int:
@@ -65,6 +67,10 @@ def save_checkpoint(cfg: dict, policy: PreTrainedPolicy, save_dir: str, epoch: i
         policy_cfg = draccus.encode(policy.module.config)
         policy_cfg["device"] = "cuda" if torch.cuda.is_available() else "cpu"
         policy_cfg["delta_timestamps"] = cfg.DATASET.DELTA_TIMESTAMPS
+        # Whether the dataset turned actions into deltas w.r.t. the current state.
+        # Not every policy config carries a `use_delta_action` field (SmolVLA does
+        # not), so record it separately for the eval-side wrappers to undo.
+        policy_cfg["dataset_use_delta_action"] = cfg.DATASET.USE_DELTA_ACTION
         policy_cfg["epoch"] = epoch
         json.dump(policy_cfg, f, indent=4)
 
@@ -215,6 +221,7 @@ def get_policy_class(policy_name: str) -> type[PreTrainedPolicy]:
         "diffusion": DiffusionPolicy,
         "pi0": PI0Policy,
         "smolvla": SmolVLAPolicy,
+        "smolvla_wm": SmolVLAWMPolicy,
         "dynamicvla": DynamicVLAPolicy,
     }
     if policy_name in policy_classes:
@@ -274,6 +281,8 @@ def get_policy_cfg(
         cfg_class = PI0Config
     elif policy_cfg.TYPE == "smolvla":
         cfg_class = SmolVLAConfig
+    elif policy_cfg.TYPE == "smolvla_wm":
+        cfg_class = SmolVLAWMConfig
     elif policy_cfg.TYPE == "dynamicvla":
         cfg_class = DynamicVLAConfig
     else:

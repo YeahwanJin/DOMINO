@@ -1,0 +1,85 @@
+# Experiment 1 — SmolVLA fine-tuned on DOMINO (RoboTwin / SAPIEN, bimanual
+# aloha-agilex), with NO reconstruction loss. This is the baseline that experiment 2
+# (configs/domino_smolvla_wm.yaml) is compared against; the two configs differ only
+# in the policy TYPE and the world-model block.
+#
+# Pretrained weights come from the Hub (lerobot/smolvla_base) — pass it with `-p`:
+#   bash train.sh all domino_smolvla 1 configs/domino_smolvla.yaml lerobot/smolvla_base
+CONST:
+  EXP_NAME: null
+  N_WORKERS: 8
+
+DATASET:
+  # Overridden on the command line with `-d <repo_id>`; `all` trains on every task
+  # under data/lerobot_data.
+  NAME: adjust_bottle
+  PIN_MEMORY: false
+  # DOMINO's take_action(action_type="qpos") expects absolute joint positions, and
+  # the delta logic assumes a single trailing gripper dim, which does not hold for
+  # the bimanual 14-D layout [left_arm(6), left_gripper, right_arm(6), right_gripper].
+  USE_DELTA_ACTION: false
+  IMG_SIZE:
+  # SmolVLA is a single-frame policy: it has no temporal fusion and `prepare_images`
+  # keeps only the latest frame, so leaving this null falls back to the policy's own
+  # observation_delta_indices ([0]). This is the main architectural difference from
+  # DynamicVLA, which conditions on [-2, 0].
+  DELTA_TIMESTAMPS:
+  REQUIRED_FEATURES:
+    - observation.images.cam_high
+    - observation.images.cam_left_wrist
+    - observation.images.cam_right_wrist
+    - observation.state
+    - action
+
+POLICY:
+  TYPE: smolvla
+  # Used as the fallback when `-p` points at a path that does not exist.
+  CHECKPOINT: lerobot/smolvla_base
+  N_OBS_STEPS: 1
+  CHUNK_SIZE: 20
+  N_ACTION_STEPS: 10
+  # SmolVLM2-500M was pretrained at this resolution; keep it.
+  RESIZE_IMGS_WITH_PADDING: [512, 512]
+  ATTENTION_MODE: cross_attn
+  # The VLM weights arrive with the smolvla_base checkpoint, not from the Hub config.
+  LOAD_VLM_WEIGHTS: false
+  # Matched to configs/domino_smolvla_wm.yaml so that the presence of the world-model
+  # loss is the only difference between the two experiments.
+  FREEZE_VISION_ENCODER: false
+  TRAIN_EXPERT_ONLY: false
+  # smolvla_base already predicts into the 32-D padded action space that DOMINO's
+  # 14-D bimanual vector fits into, so the action head keeps its pretrained prior.
+  REINIT_ACTION_HEAD: false
+
+DIR:
+  OUTPUT: ./runs
+
+WANDB:
+  ENABLED: false
+  PROJECT: SmolVLA-DOMINO
+  ENTITY: null
+  MODE: online
+  RUN_ID: null
+  LOG_CODE: true
+  SYNC_TENSORBOARD: false
+
+TRAIN:
+  N_EPOCHS: 6
+  BATCH_SIZE: 8
+  GRAD_ACCUM_STEPS: 2
+  CKPT_SAVE_FREQ:
+    EPOCH: 5
+    BATCH: 0
+  OPTIMIZER:
+    LR: 1.0e-4
+    EPS: 1.0e-8
+    WEIGHT_DECAY: 1.0e-10
+    BETAS: [0.9, 0.95]
+  LR_SCHEDULER:
+    NAME: cosine
+    N_WARMUP_STEPS: 1000
+  IMAGE_TRANSFORMS:
+    BRIGHTNESS: [0.8, 1.2]
+    CONTRAST: [0.8, 1.2]
+    SATURATION: [0.5, 1.5]
+    HUE: [-0.05, 0.05]

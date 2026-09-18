@@ -1,5 +1,14 @@
 #!/bin/bash
-# Usage: bash train.sh <repo_id> <exp_name> [n_gpus] [config]
+# Usage: bash train.sh <repo_id> <exp_name> [n_gpus] [config] [ckpt]
+#
+# Examples:
+#   DynamicVLA + world model:
+#     bash train.sh all domino_all_tasks_with_wm 1 configs/domino_dynamicvla.yaml \
+#         runs/pretrained/dynamic-vla-DOM
+#   SmolVLA baseline (experiment 1):
+#     bash train.sh all domino_smolvla 1 configs/domino_smolvla.yaml lerobot/smolvla_base
+#   SmolVLA + world model (experiment 2):
+#     bash train.sh all domino_smolvla_wm 1 configs/domino_smolvla_wm.yaml lerobot/smolvla_base
 # Run inside the DynamicVLA conda environment.
 
 set -e
@@ -13,8 +22,11 @@ ckpt=${5:-runs/pretrained/dynamic-vla-DOM}
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "${script_dir}"
 
+# `ckpt` is either a local run directory or a Hugging Face repo id such as
+# `lerobot/smolvla_base`; run.py resolves both. When it is neither, core.train falls
+# back to the config's POLICY.CHECKPOINT (or trains from scratch if that is empty).
 ckpt_arg=()
-if [ -n "${ckpt}" ] && [ -d "${ckpt}" ]; then
+if [ -n "${ckpt}" ]; then
     ckpt_arg=(-p "${ckpt}")
 fi
 

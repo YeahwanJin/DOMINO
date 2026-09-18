@@ -31,10 +31,15 @@ def main():
             "max": np.max([s[key]["max"] for s in all_stats], axis=0).tolist(),
         }
 
-    # Target output directories
+    # Target output directories. Anything listed here gets a stats.json next to its
+    # checkpoint, which utils.dataset_stats.load_dataset_stats prefers over
+    # re-aggregating at eval time. Keep in sync with the `ckpt_dir` defaults in
+    # policy/*/deploy_policy.yml.
     target_dirs = [
         pathlib.Path("policy/DynamicVLA/runs/checkpoints/domino_all_tasks_with_wm"),
         pathlib.Path("policy/DynamicVLA/runs/checkpoints/domino_adjust_bottle"),
+        pathlib.Path("policy/DynamicVLA/runs/checkpoints/domino_smolvla"),
+        pathlib.Path("policy/DynamicVLA/runs/checkpoints/domino_smolvla_wm"),
     ]
 
     for target_dir in target_dirs:

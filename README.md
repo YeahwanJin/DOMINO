@@ -390,13 +390,25 @@ See the [Ascend training guide](policy/PUMA/docs/ascend_training.md) and the [As
 base  (CUDA 12.8.2 + Ubuntu 22.04 + Python 3.10 + PyTorch 2.7.0 + cu128)
   ├── eval        (+SAPIEN, curobo, mplib, pytorch3d, PUMA eval client)
   ├── puma        (+flash-attn, GroundingDINO, SAM2, DeepSpeed)
-  └── dynamicvla  (+flash-attn, DynamicVLA deps, DOMINO scripts)
+  ├── dynamicvla  (+flash-attn, DynamicVLA deps, DOMINO scripts)
+  └── smolvla     (+flash-attn, LeRobot/SmolVLA deps, DOMINO scripts)
 
 ```bash
 docker build --target eval       -t domino-eval       .
 docker build --target puma       -t domino-puma       .
 docker build --target dynamicvla -t domino-dynamicvla .
+docker build --target smolvla    -t domino-smolvla    .
 ```
+
+`policy/DynamicVLA`는 이 레포의 **공용 LeRobot 학습 트리**입니다. DynamicVLA와 SmolVLA 실험이 모두
+`policy/DynamicVLA/run.py` + `configs/*.yaml`로 학습되고, 정책별로 갈라지는 것은 eval 진입점
+(`policy/<PolicyName>/deploy_policy.{py,yml}`)뿐입니다. `policy_name`이 `eval_result/`를 나누기 때문입니다.
+
+| 실험 | config | policy_name | eval_result 경로 |
+|---|---|---|---|
+| DynamicVLA + world loss | `configs/domino_dynamicvla.yaml` | `DynamicVLA` | `eval_result/DynamicVLA/...` |
+| 실험1 — SmolVLA (loss 없음) | `configs/domino_smolvla.yaml` | `SmolVLA` | `eval_result/SmolVLA/...` |
+| 실험2 — SmolVLA + world loss | `configs/domino_smolvla_wm.yaml` | `SmolVLA_WM` | `eval_result/SmolVLA_WM/...` |
 
 ### 3.1 Eval 컨테이너 (DOMINO 시뮬레이션 + 평가)
 
@@ -568,6 +580,162 @@ docker run --rm -it \
     --seed 0
 ```
 
+
+### 3.4 SmolVLA 컨테이너 (실험1 / 실험2)
+
+HuggingFace의 pretrained [`lerobot/smolvla_base`](https://huggingface.co/lerobot/smolvla_base)에서 출발해
+DOMINO 데이터로 fine-tune하고, DOMINO로 평가한다. 두 실험은 **world loss 유무만** 다르다.
+
+| | 실험1 (`domino_smolvla`) | 실험2 (`domino_smolvla_wm`) |
+|---|---|---|
+| POLICY.TYPE | `smolvla` (stock LeRobot) | `smolvla_wm` (`policies/smolvla_wm`) |
+| Reconstruction loss | 없음 | depth L1 + edge-aware smoothness |
+| depth 라벨 필요 | ❌ | ✅ `depth/cam_high/*.npy` |
+| 학습 범위 | vision tower + connector + VLM + action expert | 동일 |
+| 그 외 (chunk, batch, lr, epoch, 카메라) | 동일 | 동일 |
+
+나머지 하이퍼파라미터가 전부 같기 때문에 두 결과의 차이는 reconstruction loss에서만 온다.
+
+#### 실험2의 world loss가 하는 일
+
+DynamicVLA에 붙인 것과 **같은 브랜치**(`policies/dynamicvla/world_model`)를 재사용한다. SmolVLA의 SigLIP
+vision tower + modality connector가 내놓는 visual token을 그대로 받아,
+
+1. token grid → `StaticGaussianDecoder` → 128×128 depth map (+ `WORLD_MODEL_RENDER_WEIGHT > 0`이면 3D Gaussian),
+2. Depth Anything V2 pseudo-depth와 L1 loss, edge-aware smoothness loss를 더하고,
+3. (옵션) diff-gaussian-rasterization으로 렌더한 뒤 photometric loss까지.
+
+depth는 **입력이 아니라 supervision target일 뿐**이다. 브랜치는 `use_world_model_aux`로 게이팅되어 있고
+eval 시에는 꺼진 채로 policy가 만들어지므로, 실험1과 실험2의 **추론 그래프는 완전히 동일**하다
+(체크포인트의 `world_model.*` 텐서는 로드 시 버려진다).
+
+`SmolVLAWMPolicy`는 LeRobot `SmolVLAPolicy`의 얇은 서브클래스다. action flow-matching 경로는 그대로 상속하고,
+`SmolVLMWithExpertModel.embed_image`를 인스턴스 단위로 감싸 visual token을 가로챈 뒤 `forward`에서
+`world_model_aux_weight * aux_loss`만 더한다. 설치된 lerobot 패키지는 건드리지 않는다.
+
+#### 데이터 준비
+
+```bash
+# LeRobot 데이터셋 + Depth Anything V2 라벨 (실험2만 depth 필요)
+# 5번째 인자(camera)는 WORLD_MODEL_DEPTH_KEY의 카메라와 반드시 같아야 한다.
+bash policy/DynamicVLA/process_data.sh adjust_bottle demo_clean_dynamic \
+    domino/adjust_bottle depth-anything/Depth-Anything-V2-Small-hf cam_high
+```
+
+depth 사이드카는 `data/lerobot_data/<task>/depth/cam_high/episode_XXXXXX.npy` (float16, `(T,128,128)`,
+0=near/1=far)에 쌓인다. `--out-size 128`은 `WORLD_MODEL_GRID_SIZE(16) * 8`에서 나온 값이라 둘을 함께 바꿔야 한다.
+
+#### 학습
+
+```bash
+# 실험1 — SmolVLA, reconstruction loss 없음
+docker run --rm -it \
+  --gpus all \
+  --network=host \
+  --shm-size=16g \
+  -v $(pwd)/data:/workspace/DOMINO/data \
+  -v $(pwd)/policy/DynamicVLA:/workspace/DOMINO/policy/DynamicVLA \
+  domino-smolvla \
+  bash -c "cd policy/DynamicVLA && bash train.sh all domino_smolvla 1 \
+    configs/domino_smolvla.yaml lerobot/smolvla_base"
+```
+
+```bash
+# 실험2 — SmolVLA + world loss
+docker run --rm -it \
+  --gpus all \
+  --network=host \
+  --shm-size=16g \
+  -v $(pwd)/data:/workspace/DOMINO/data \
+  -v $(pwd)/policy/DynamicVLA:/workspace/DOMINO/policy/DynamicVLA \
+  domino-smolvla \
+  bash -c "cd policy/DynamicVLA && bash train.sh all domino_smolvla_wm 1 \
+    configs/domino_smolvla_wm.yaml lerobot/smolvla_base"
+```
+
+`lerobot/smolvla_base`는 HF Hub repo id로 그대로 넘기면 `from_pretrained`가 받아온다. 오프라인 컨테이너라면
+미리 받아두고 로컬 경로를 넘겨도 된다:
+
+```bash
+huggingface-cli download lerobot/smolvla_base \
+    --local-dir policy/DynamicVLA/runs/pretrained/smolvla_base
+# ... train.sh ... configs/domino_smolvla.yaml runs/pretrained/smolvla_base
+```
+
+체크포인트는 `policy/DynamicVLA/runs/checkpoints/<exp_name>/`에 `model.safetensors` + `config.json`으로 저장된다
+(`deploy_policy.yml`의 `ckpt_dir` 기본값과 일치).
+
+```bash
+# Interactive — 직접 bash로 접속하여 학습
+docker run --rm -it \
+  --gpus all \
+  --network=host \
+  --shm-size=16g \
+  -v $(pwd)/data:/workspace/DOMINO/data \
+  -v $(pwd)/policy/DynamicVLA/runs:/workspace/DOMINO/policy/DynamicVLA/runs \
+  domino-smolvla /bin/bash
+```
+
+#### Eval (double-env — Policy Server + Eval Client)
+
+DynamicVLA와 동일하게 double-env 전용. 실험1은 `policy/SmolVLA/deploy_policy.yml`, 실험2는
+`policy/SmolVLA_WM/deploy_policy.yml`을 쓴다 (차이는 `policy_name`과 `ckpt_dir`뿐).
+
+```bash
+# SmolVLA Policy Server (실험1; 실험2는 config를 SmolVLA_WM 쪽으로 바꾼다)
+docker run --rm -it \
+  --gpus all \
+  --network=host \
+  -v $(pwd)/policy/DynamicVLA/runs:/workspace/DOMINO/policy/DynamicVLA/runs \
+  -v $(pwd)/data:/workspace/DOMINO/data \
+  -v $(pwd)/policy/DynamicVLA:/workspace/DOMINO/policy/DynamicVLA \
+  -v $(pwd)/policy/SmolVLA:/workspace/DOMINO/policy/SmolVLA \
+  -v $(pwd)/policy/SmolVLA_WM:/workspace/DOMINO/policy/SmolVLA_WM \
+  domino-smolvla \
+  python script/policy_model_server.py \
+    --port 5556 \
+    --config policy/SmolVLA/deploy_policy.yml
+```
+
+```bash
+# 35개 태스크 전체 평가 (별도 터미널, eval 컨테이너)
+docker run --rm -it \
+  --gpus all \
+  --network=host \
+  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
+  --device /dev/dri \
+  -v $(pwd)/assets:/workspace/DOMINO/assets \
+  -v $(pwd)/data:/workspace/DOMINO/data \
+  -v $(pwd)/eval:/workspace/DOMINO/eval \
+  -v $(pwd)/eval_result:/workspace/DOMINO/eval_result \
+  -v $(pwd)/script:/workspace/DOMINO/script \
+  -v $(pwd)/policy/SmolVLA:/workspace/DOMINO/policy/SmolVLA \
+  -v $(pwd)/task_config:/workspace/DOMINO/task_config \
+  domino-eval \
+  bash script/eval_all_tasks.sh \
+    --port 5556 \
+    --config policy/SmolVLA/deploy_policy.yml \
+    --task_config demo_clean_dynamic \
+    --ckpt_setting domino_smolvla \
+    --test_num 100 \
+    --seed 0
+```
+
+실험2는 위 두 명령에서 `SmolVLA` → `SmolVLA_WM`, `--ckpt_setting domino_smolvla` →
+`--ckpt_setting domino_smolvla_wm`으로 바꿔 실행한다. 결과는 각각
+
+```
+eval_result/SmolVLA/demo_clean_dynamic/domino_smolvla/<timestamp>/
+eval_result/SmolVLA_WM/demo_clean_dynamic/domino_smolvla_wm/<timestamp>/
+```
+
+에 쌓이고, 두 경로 모두 `metrics_summary.txt`(태스크별 SR / MS / RC + 평균)와 `summary.txt`를 포함한다.
+`eval_result/experimental_log.txt`에는 모든 run이 누적된다.
+
+> **Note (카메라 이름)**: 학습 config의 `REQUIRED_FEATURES`와 `WORLD_MODEL_DEPTH_KEY`는 LeRobot 데이터셋이
+> `cam_high` / `cam_left_wrist` / `cam_right_wrist`를 쓴다고 가정한다. 시뮬레이터가 내주는 이름은
+> `head_camera` / `left_camera` / `right_camera`이며, eval 쪽 변환은 `utils/domino_obs.py`의 별칭 표가 담당한다.
+> 데이터셋이 `head_camera` 계열이면 config의 두 항목을 그에 맞게 바꿔야 한다.
 
 > **Note**: `--network=host`를 사용하므로 같은 호스트에서 실행되는 컨테이너끼리 `127.0.0.1:port`로 통신 가능. GPU 번호는 `device=N`으로 조절.
 

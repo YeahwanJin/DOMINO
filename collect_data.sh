@@ -1,4 +1,4 @@
-#!/bin/bash
+git rm -r#!/bin/bash
 
 task_name=${1}
 task_config=${2}

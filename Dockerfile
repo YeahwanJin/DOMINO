@@ -6,12 +6,14 @@
 # Targets:
 #   eval        - DOMINO simulation eval server (SAPIEN + curobo + mplib)
 #   puma        - PUMA training / inference (flash-attn + GroundingDINO + SAM2)
-#   dynamicvla  - DynamicVLA policy server (double-env TCP mode)
+#   dynamicvla  - DynamicVLA training + policy server (double-env TCP mode)
+#   smolvla     - SmolVLA training + policy server (both SmolVLA experiments)
 #
 # Build:
 #   docker build --target eval       -t domino-eval       .
 #   docker build --target puma       -t domino-puma       .
 #   docker build --target dynamicvla -t domino-dynamicvla .
+#   docker build --target smolvla    -t domino-smolvla    .
 #
 # Run (eval example):
 #   docker run --rm -it \
@@ -250,6 +252,62 @@ RUN rm -rf /usr/lib/python3/dist-packages/blinker* \
 COPY policy/DynamicVLA/ /workspace/DOMINO/policy/DynamicVLA/
 
 # Copy DOMINO scripts needed for double-env mode (policy_model_server.py, etc.)
+COPY script/ /workspace/DOMINO/script/
+COPY policy/__init__.py /workspace/DOMINO/policy/__init__.py
+COPY envs/ /workspace/DOMINO/envs/
+COPY task_config/ /workspace/DOMINO/task_config/
+COPY description/ /workspace/DOMINO/description/
+
+ENV PYTHONPATH="/workspace/DOMINO:/workspace/DOMINO/policy:${PYTHONPATH}"
+
+CMD ["/bin/bash"]
+
+
+# =============================================================================
+# SMOLVLA — training and policy server (double-env TCP mode)
+#
+# Serves both SmolVLA experiments, which share one environment because they share
+# one codebase:
+#   1. configs/domino_smolvla.yaml     — fine-tune, no reconstruction loss
+#   2. configs/domino_smolvla_wm.yaml  — + GaussianDream-style world-model loss
+#
+# The world-model loss needs no extra runtime: its depth term is plain PyTorch, and
+# the optional photometric term (WORLD_MODEL_RENDER_WEIGHT > 0) is the only piece
+# that would require diff-gaussian-rasterization, which is not on PyPI and stays
+# unbuilt here — exactly as in the dynamicvla target.
+# =============================================================================
+FROM base AS smolvla
+
+# flash-attn (SmolVLM / action-expert attention)
+RUN pip install --no-cache-dir packaging ninja && \
+    pip install --no-cache-dir flash-attn --no-build-isolation
+
+WORKDIR /workspace/DOMINO
+
+# SmolVLA runs on the same LeRobot stack as DynamicVLA (lerobot 0.3.3 +
+# transformers 5.2.0 + torchcodec), so the requirements file is shared rather than
+# duplicated. `accelerate` is added for the `load_vlm_weights: true` path, which
+# loads the SmolVLM backbone straight from the Hub with device_map="auto".
+COPY policy/DynamicVLA/requirements-domino.txt /tmp/smolvla_requirements.txt
+RUN rm -rf /usr/lib/python3/dist-packages/blinker* \
+           /usr/lib/python3/dist-packages/PyYAML* \
+           /usr/lib/python3/dist-packages/yaml* && \
+    grep -viE '^(torch==|torchvision|torchaudio)' /tmp/smolvla_requirements.txt \
+        > /tmp/requirements_filtered.txt && \
+    pip install --no-cache-dir -r /tmp/requirements_filtered.txt && \
+    pip install --no-cache-dir accelerate && \
+    rm /tmp/smolvla_requirements.txt /tmp/requirements_filtered.txt
+
+# Shared LeRobot training tree (run.py, core/, utils/, policies/, configs/) plus the
+# server-side model wrappers.
+COPY policy/DynamicVLA/ /workspace/DOMINO/policy/DynamicVLA/
+
+# SmolVLA eval entry points. Two policy_names so the experiments land in separate
+# eval_result/ subtrees; both defer to policy/DynamicVLA/smolvla_model.py.
+COPY policy/SmolVLA/ /workspace/DOMINO/policy/SmolVLA/
+COPY policy/SmolVLA_WM/ /workspace/DOMINO/policy/SmolVLA_WM/
+
+# DOMINO scripts needed for double-env mode (policy_model_server.py, etc.)
 COPY script/ /workspace/DOMINO/script/
 COPY policy/__init__.py /workspace/DOMINO/policy/__init__.py
 COPY envs/ /workspace/DOMINO/envs/

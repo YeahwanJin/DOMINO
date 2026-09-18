@@ -1,0 +1,13 @@
+# == keep unchanged ==
+policy_name: SmolVLA
+task_name: null
+task_config: null
+ckpt_setting: null
+seed: null
+instruction_type: unseen
+
+# == SmolVLA specific (experiment 1: no reconstruction loss) ==
+# Directory holding model.safetensors + config.json written by utils.helpers.save_checkpoint.
+ckpt_dir: ./policy/DynamicVLA/runs/checkpoints/domino_smolvla
+# Actions executed per policy query; capped at the checkpoint's chunk_size.
+n_action_steps: 10

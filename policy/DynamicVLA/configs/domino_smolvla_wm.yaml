@@ -1,0 +1,93 @@
+# Experiment 2 — SmolVLA on DOMINO with the GaussianDream-style world-model
+# auxiliary loss (the same reconstruction loss used by configs/domino_dynamicvla.yaml).
+#
+# The branch decodes a depth map from SmolVLA's own visual tokens and supervises it
+# against Depth Anything V2 pseudo-depth from scripts/generate_depth.py. Depth is
+# only ever a supervision target, never a model input, so the inference path is
+# identical to experiment 1 (configs/domino_smolvla.yaml).
+#
+# Everything outside the POLICY.TYPE and the world-model block is byte-for-byte the
+# same as experiment 1, so the loss is the only variable.
+#
+#   bash train.sh all domino_smolvla_wm 1 configs/domino_smolvla_wm.yaml lerobot/smolvla_base
+CONST:
+  EXP_NAME: null
+  N_WORKERS: 8
+
+DATASET:
+  NAME: adjust_bottle
+  PIN_MEMORY: false
+  USE_DELTA_ACTION: false
+  IMG_SIZE:
+  # SmolVLA is single-frame; see configs/domino_smolvla.yaml.
+  DELTA_TIMESTAMPS:
+  REQUIRED_FEATURES:
+    - observation.images.cam_high
+    - observation.images.cam_left_wrist
+    - observation.images.cam_right_wrist
+    - observation.state
+    - action
+
+POLICY:
+  TYPE: smolvla_wm
+  CHECKPOINT: lerobot/smolvla_base
+  N_OBS_STEPS: 1
+  CHUNK_SIZE: 20
+  N_ACTION_STEPS: 10
+  RESIZE_IMGS_WITH_PADDING: [512, 512]
+  ATTENTION_MODE: cross_attn
+  LOAD_VLM_WEIGHTS: false
+  # The world-model loss only shapes the representation if it can reach the vision
+  # tower, so the tower is trained here rather than frozen.
+  FREEZE_VISION_ENCODER: false
+  TRAIN_EXPERT_ONLY: false
+  REINIT_ACTION_HEAD: false
+
+  # ---- world-model auxiliary loss (training only) ----
+  # Requires depth sidecars at data/lerobot_data/<task>/depth/cam_high/*.npy.
+  # Generate them with scripts/generate_depth.py (see process_data.sh).
+  USE_WORLD_MODEL_AUX: true
+  WORLD_MODEL_AUX_WEIGHT: 1.0
+  WORLD_MODEL_DEPTH_WEIGHT: 1.0
+  # Needs diff-gaussian-rasterization compiled; set > 0 to add the photometric term.
+  WORLD_MODEL_RENDER_WEIGHT: 0.0
+  WORLD_MODEL_SMOOTH_WEIGHT: 0.1
+  WORLD_MODEL_GRID_SIZE: 16
+  WORLD_MODEL_DEPTH_KEY: observation.depth.cam_high
+  # DOMINO head camera (task_config/_camera_config.yml, D435).
+  WORLD_MODEL_CAMERA_FOVY: 37.0
+  WORLD_MODEL_CAMERA_WIDTH: 320
+  WORLD_MODEL_CAMERA_HEIGHT: 240
+
+DIR:
+  OUTPUT: ./runs
+
+WANDB:
+  ENABLED: false
+  PROJECT: SmolVLA-DOMINO
+  ENTITY: null
+  MODE: online
+  RUN_ID: null
+  LOG_CODE: true
+  SYNC_TENSORBOARD: false
+
+TRAIN:
+  N_EPOCHS: 6
+  BATCH_SIZE: 8
+  GRAD_ACCUM_STEPS: 2
+  CKPT_SAVE_FREQ:
+    EPOCH: 5
+    BATCH: 0
+  OPTIMIZER:
+    LR: 1.0e-4
+    EPS: 1.0e-8
+    WEIGHT_DECAY: 1.0e-10
+    BETAS: [0.9, 0.95]
+  LR_SCHEDULER:
+    NAME: cosine
+    N_WARMUP_STEPS: 1000
+  IMAGE_TRANSFORMS:
+    BRIGHTNESS: [0.8, 1.2]
+    CONTRAST: [0.8, 1.2]
+    SATURATION: [0.5, 1.5]
+    HUE: [-0.05, 0.05]

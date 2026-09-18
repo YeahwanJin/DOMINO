@@ -24,6 +24,20 @@ import utils.helpers
 import utils.summary_writer
 
 
+def _is_resolvable_checkpoint(ckpt: str) -> bool:
+    """True for a local checkpoint directory or a Hugging Face Hub repo id.
+
+    Hub ids look like `owner/name`; they carry no local path, so `os.path.exists`
+    would reject them even though `PreTrainedPolicy.from_pretrained` downloads them
+    happily. Anything that is neither is treated as a mistyped path.
+    """
+    if os.path.isdir(ckpt):
+        return True
+
+    parts = ckpt.split("/")
+    return len(parts) == 2 and all(parts) and not ckpt.startswith((".", "~", "/"))
+
+
 def train(cfg):
     torch.backends.cudnn.benchmark = True
     torch.backends.cuda.matmul.allow_tf32 = True
@@ -117,7 +131,10 @@ def train(cfg):
     init_epoch = 0
     if "CKPT" in cfg.CONST:
         logging.info("Loading pretrained model from %s ..." % cfg.CONST.CKPT)
-        if cfg.CONST.CKPT is None or not os.path.exists(cfg.CONST.CKPT):
+        # A checkpoint is either a local run directory or a Hugging Face repo id
+        # (e.g. `lerobot/smolvla_base`), which `from_pretrained` resolves itself.
+        # Only a local path that is missing is a mistake worth falling back from.
+        if cfg.CONST.CKPT is None or not _is_resolvable_checkpoint(cfg.CONST.CKPT):
             logging.warning(
                 "Checkpoint %s does not exist. Fallback to default checkpoint %s."
                 % (cfg.CONST.CKPT, cfg.POLICY.CHECKPOINT)

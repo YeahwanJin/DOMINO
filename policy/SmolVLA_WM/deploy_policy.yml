@@ -1,0 +1,15 @@
+# == keep unchanged ==
+policy_name: SmolVLA_WM
+task_name: null
+task_config: null
+ckpt_setting: null
+seed: null
+instruction_type: unseen
+
+# == SmolVLA specific (experiment 2: + world-model reconstruction loss) ==
+# Directory holding model.safetensors + config.json written by utils.helpers.save_checkpoint.
+# The checkpoint's `world_model.*` tensors are dropped at load time: the branch is a
+# training-only loss and is never constructed on the inference path.
+ckpt_dir: ./policy/DynamicVLA/runs/checkpoints/domino_smolvla_wm
+# Actions executed per policy query; capped at the checkpoint's chunk_size.
+n_action_steps: 10
