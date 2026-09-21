@@ -1,13 +1,12 @@
 # =============================================================================
-# TinyVLA Finetuning Docker Image (RTX 5090 / Blackwell SM 120)
-# Base: NVIDIA CUDA 12.8.2 devel + Ubuntu 22.04
-# Python 3.10 | PyTorch 2.7.0 (cu128) | DeepSpeed | flash-attn
+# TinyVLA Finetuning Docker Image (CUDA 12.1/12.2 Compatible)
+# Base: NVIDIA CUDA 12.1.1 devel + Ubuntu 22.04
+# Python 3.10 | PyTorch 2.4.1 (cu121) | DeepSpeed | flash-attn
 # =============================================================================
 # 참고: DOMINO 공식 가이드 (https://github.com/H-EmbodVis/DOMINO)
-#   - Python 3.10, CUDA 12.1 권장이지만 RTX 5090은 CUDA 12.8+, PyTorch 2.7+ 필요
-#   - 단일 GPU 환경 (RTX 5090 x1) 기준
+#   - Python 3.10, CUDA 12.1 권장
 
-FROM nvidia/cuda:12.8.2-devel-ubuntu22.04
+FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 
 # ---------- Environment variables ----------
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -15,8 +14,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=C.UTF-8 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    # RTX 5090 = Blackwell SM 120
-    TORCH_CUDA_ARCH_LIST="12.0" \
+    TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9" \
     MAX_JOBS=8 \
     # DOMINO 공식 가이드: Docker 실행 시 graphics capability 필요
     NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
@@ -65,14 +63,12 @@ RUN add-apt-repository ppa:deadsnakes/ppa -y && \
     ln -sf /usr/bin/python3.10 /usr/bin/python && \
     curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10
 
-# ---------- Install PyTorch 2.7.0 + CUDA 12.8 (RTX 5090 필수) ----------
-# requirements.txt의 torch==2.4.1은 Blackwell SM 120 미지원
-# PyTorch 2.7.0이 SM 120 네이티브 지원하는 최소 버전
+# ---------- Install PyTorch 2.4.1 + CUDA 12.1 ----------
 RUN pip install --no-cache-dir \
-        torch==2.7.0 \
-        torchvision==0.22.0 \
-        torchaudio==2.7.0 \
-        --index-url https://download.pytorch.org/whl/cu128
+        torch==2.4.1 \
+        torchvision==0.19.1 \
+        torchaudio==2.4.1 \
+        --index-url https://download.pytorch.org/whl/cu121
 
 # ---------- Install flash-attn (CUDA 소스 빌드 필요) ----------
 # DOMINO/PUMA 가이드: pip install flash-attn==2.7.4.post1 --no-build-isolation

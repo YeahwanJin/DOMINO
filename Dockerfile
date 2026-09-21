@@ -1,7 +1,7 @@
 # =============================================================================
-# DOMINO Unified Multi-Stage Docker Image (RTX 5090 / Blackwell SM 120)
+# DOMINO Unified Multi-Stage Docker Image (CUDA 12.1/12.2 Compatible)
 #
-# All targets share a common base: CUDA 12.8.2 + Python 3.10 + PyTorch 2.7.0
+# All targets share a common base: CUDA 12.1 / 12.2 + Python 3.10 + PyTorch 2.4.1
 #
 # Targets:
 #   eval        - DOMINO simulation eval server (SAPIEN + curobo + mplib)
@@ -39,14 +39,14 @@
 # =============================================================================
 # BASE STAGE — shared foundation for all targets
 # =============================================================================
-FROM nvidia/cuda:12.8.2-devel-ubuntu22.04 AS base
+FROM nvidia/cuda:12.1.1-devel-ubuntu22.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    TORCH_CUDA_ARCH_LIST="12.0" \
+    TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9" \
     MAX_JOBS=8 \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
 
@@ -85,19 +85,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# ---------- Upgrade Vulkan loader to support Vulkan 1.4 (NVIDIA 595.x) ----------
-# Ubuntu 22.04 ships Vulkan loader 1.3.204 which cannot load a Vulkan 1.4 ICD.
-RUN wget -qO /etc/apt/keyrings/lunarg-signing-key-pub.asc \
-        https://packages.lunarg.com/lunarg-signing-key-pub.asc && \
-    echo "deb [signed-by=/etc/apt/keyrings/lunarg-signing-key-pub.asc] \
-        https://packages.lunarg.com/vulkan/1.4.313 jammy main" \
-        > /etc/apt/sources.list.d/lunarg-vulkan-1.4.313-jammy.list && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-        libvulkan1 \
-        vulkan-tools \
-    && rm -rf /var/lib/apt/lists/*
-
 # ---------- Python 3.10 ----------
 RUN add-apt-repository ppa:deadsnakes/ppa -y && \
     apt-get update && \
@@ -111,12 +98,12 @@ RUN add-apt-repository ppa:deadsnakes/ppa -y && \
     ln -sf /usr/bin/python3.10 /usr/bin/python && \
     curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10
 
-# ---------- PyTorch 2.7.0 + CUDA 12.8 ----------
+# ---------- PyTorch 2.4.1 + CUDA 12.1 ----------
 RUN pip install --no-cache-dir \
-        torch==2.7.0 \
-        torchvision==0.22.0 \
-        torchaudio==2.7.0 \
-        --index-url https://download.pytorch.org/whl/cu128
+        torch==2.4.1 \
+        torchvision==0.19.1 \
+        torchaudio==2.4.1 \
+        --index-url https://download.pytorch.org/whl/cu121
 
 
 # =============================================================================
@@ -127,7 +114,7 @@ FROM base AS eval
 # Configure EGL and Vulkan ICD for SAPIEN rendering
 RUN mkdir -p /usr/share/glvnd/egl_vendor.d /etc/vulkan/icd.d /usr/share/vulkan/icd.d && \
     echo '{\n    "file_format_version" : "1.0.0",\n    "ICD" : {\n        "library_path" : "libEGL_nvidia.so.0"\n    }\n}' > /usr/share/glvnd/egl_vendor.d/10_nvidia.json && \
-    echo '{\n    "file_format_version" : "1.0.1",\n    "ICD": {\n        "library_path": "libGLX_nvidia.so.0",\n        "api_version" : "1.4.329"\n    }\n}' > /etc/vulkan/icd.d/nvidia_icd.json && \
+    echo '{\n    "file_format_version" : "1.0.1",\n    "ICD": {\n        "library_path": "libGLX_nvidia.so.0",\n        "api_version" : "1.3.0"\n    }\n}' > /etc/vulkan/icd.d/nvidia_icd.json && \
     cp /etc/vulkan/icd.d/nvidia_icd.json /usr/share/vulkan/icd.d/nvidia_icd.json
 
 WORKDIR /workspace/DOMINO

@@ -630,7 +630,7 @@ depth 사이드카는 `data/lerobot_data/<task>/depth/cam_high/episode_XXXXXX.np
 ```bash
 # 실험1 — SmolVLA, reconstruction loss 없음
 docker run --rm -it \
-  --gpus all \
+  --gpus '"device=2,3"' \
   --network=host \
   --shm-size=16g \
   -v $(pwd)/data:/workspace/DOMINO/data \
@@ -643,7 +643,7 @@ docker run --rm -it \
 ```bash
 # 실험2 — SmolVLA + world loss
 docker run --rm -it \
-  --gpus all \
+  --gpus '"device=2,3"' \
   --network=host \
   --shm-size=16g \
   -v $(pwd)/data:/workspace/DOMINO/data \
@@ -668,7 +668,7 @@ huggingface-cli download lerobot/smolvla_base \
 ```bash
 # Interactive — 직접 bash로 접속하여 학습
 docker run --rm -it \
-  --gpus all \
+  --gpus '"device=2,3"' \
   --network=host \
   --shm-size=16g \
   -v $(pwd)/data:/workspace/DOMINO/data \
@@ -684,7 +684,7 @@ DynamicVLA와 동일하게 double-env 전용. 실험1은 `policy/SmolVLA/deploy_
 ```bash
 # SmolVLA Policy Server (실험1; 실험2는 config를 SmolVLA_WM 쪽으로 바꾼다)
 docker run --rm -it \
-  --gpus all \
+  --gpus '"device=2,3"' \
   --network=host \
   -v $(pwd)/policy/DynamicVLA/runs:/workspace/DOMINO/policy/DynamicVLA/runs \
   -v $(pwd)/data:/workspace/DOMINO/data \

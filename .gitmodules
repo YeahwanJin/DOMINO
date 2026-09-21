@@ -1,0 +1,3 @@
+[submodule "policy/GaussianDream"]
+	path = policy/GaussianDream
+	url = https://github.com/TuojingAI/GaussianDream.git

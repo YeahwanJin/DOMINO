@@ -1,10 +1,10 @@
 # =============================================================================
-# PUMA Finetuning Docker Image (RTX 5090 / Blackwell SM 120)
-# Base: NVIDIA CUDA 12.8.2 devel + Ubuntu 22.04
-# Python 3.10 | PyTorch 2.7.0 (cu128) | DeepSpeed | flash-attn
+# PUMA Finetuning Docker Image (CUDA 12.1/12.2 Compatible)
+# Base: NVIDIA CUDA 12.1.1 devel + Ubuntu 22.04
+# Python 3.10 | PyTorch 2.4.1 (cu121) | DeepSpeed | flash-attn
 # =============================================================================
 
-FROM nvidia/cuda:12.8.2-devel-ubuntu22.04
+FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 
 # ---------- Environment variables ----------
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -12,8 +12,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=C.UTF-8 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    # RTX 5090 = Blackwell SM 120
-    TORCH_CUDA_ARCH_LIST="12.0" \
+    TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9" \
     MAX_JOBS=8 \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
 
@@ -59,12 +58,12 @@ RUN add-apt-repository ppa:deadsnakes/ppa -y && \
     ln -sf /usr/bin/python3.10 /usr/bin/python && \
     curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10
 
-# ---------- Install PyTorch 2.7.0 + CUDA 12.8 (RTX 5090 필수) ----------
+# ---------- Install PyTorch 2.4.1 + CUDA 12.1 ----------
 RUN pip install --no-cache-dir \
-        torch==2.7.0 \
-        torchvision==0.22.0 \
-        torchaudio==2.7.0 \
-        --index-url https://download.pytorch.org/whl/cu128
+        torch==2.4.1 \
+        torchvision==0.19.1 \
+        torchaudio==2.4.1 \
+        --index-url https://download.pytorch.org/whl/cu121
 
 # ---------- Install flash-attn (CUDA 소스 빌드 필요) ----------
 RUN pip install --no-cache-dir packaging ninja && \
