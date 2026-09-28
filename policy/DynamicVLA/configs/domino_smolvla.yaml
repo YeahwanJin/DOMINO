@@ -45,7 +45,7 @@ POLICY:
   LOAD_VLM_WEIGHTS: false
   # Matched to configs/domino_smolvla_wm.yaml so that the presence of the world-model
   # loss is the only difference between the two experiments.
-  FREEZE_VISION_ENCODER: false
+  FREEZE_VISION_ENCODER: true
   TRAIN_EXPERT_ONLY: false
   # smolvla_base already predicts into the 32-D padded action space that DOMINO's
   # 14-D bimanual vector fits into, so the action head keeps its pretrained prior.

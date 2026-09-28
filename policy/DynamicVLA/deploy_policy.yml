@@ -9,6 +9,7 @@ instruction_type: unseen
 # == DynamicVLA specific ==
 # Directory holding model.safetensors + config.json written by utils.helpers.save_checkpoint.
 ckpt_dir: ./policy/DynamicVLA/runs/checkpoints/domino_all_tasks_with_wm
+#ckpt_dir: ./policy/DynamicVLA/runs/pretrained/dynamic-vla-DOM
 # Actions executed per policy query; capped at the checkpoint's chunk_size.
 n_action_steps: 10
   

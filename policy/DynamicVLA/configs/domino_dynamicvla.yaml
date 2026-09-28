@@ -41,8 +41,8 @@ POLICY:
   TEMPORAL_FUSION: attn
   # The world-model loss only shapes the representation if it can reach the vision
   # tower, so the tower is trained here rather than frozen.
-  FREEZE_VISION_MODEL: false
-  FREEZE_CONNECTOR: false
+  FREEZE_VISION_MODEL: true
+  FREEZE_CONNECTOR: true
   FREEZE_TEXT_MODEL: true
 
   # Re-initialize action head and state projection for ALOHA embodiment adaptation
@@ -52,7 +52,7 @@ POLICY:
 
   # ---- world-model auxiliary loss (training only) ----
   # Disabled by default for single-task fine-tuning since depth videos are not pre-generated.
-  USE_WORLD_MODEL_AUX: true
+  USE_WORLD_MODEL_AUX: false
   WORLD_MODEL_AUX_WEIGHT: 1.0
   WORLD_MODEL_DEPTH_WEIGHT: 1.0
   # Needs diff-gaussian-rasterization compiled; set > 0 to add the photometric term.
@@ -79,8 +79,8 @@ WANDB:
 
 TRAIN:
   N_EPOCHS: 6
-  BATCH_SIZE: 8
-  GRAD_ACCUM_STEPS: 2
+  BATCH_SIZE: 64
+  GRAD_ACCUM_STEPS: 1
   CKPT_SAVE_FREQ:
     EPOCH: 5
     BATCH: 0

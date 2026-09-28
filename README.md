@@ -497,25 +497,26 @@ docker run --rm -it \
 
 # 2. DOMINO 데이터셋으로 fine-tune
 docker run --rm -it \
-  --gpus all \
+  --gpus '"device=2,3"' \
   --network=host \
-  --shm-size=16g \
+  --shm-size=64g \
   -v $(pwd)/data:/workspace/DOMINO/data \
   -v $(pwd)/policy/DynamicVLA:/workspace/DOMINO/policy/DynamicVLA \
   domino-dynamicvla \
-  bash -c "pip install pytest && cd policy/DynamicVLA && torchrun --nproc_per_node=1 run.py \
+  bash -c "pip install pytest && cd policy/DynamicVLA && torchrun --nproc_per_node=2 run.py \
     -c configs/domino_dynamicvla.yaml \
     -d all \
-    -p runs/pretrained/dynamic-vla-DOM \
+    -p runs/checkpoints/domino_all_tasks_with_wm  \
     -e domino_all_tasks_with_wm"
+
 ```
 
 ```bash
 # Interactive — 직접 bash로 접속하여 학습
 docker run --rm -it \
-  --gpus all \
+  --gpus '"device=2,3"' \
   --network=host \
-  --shm-size=16g \
+  --shm-size=64g \
   -v $(pwd)/data:/workspace/DOMINO/data \
   -v $(pwd)/policy/DynamicVLA/runs:/workspace/DOMINO/policy/DynamicVLA/runs \
   domino-dynamicvla /bin/bash
@@ -528,8 +529,9 @@ DynamicVLA는 double-env 전용. 이 컨테이너에서 policy server를 띄우�
 ```bash
 # DynamicVLA Policy Server
 docker run --rm -it \
-  --gpus all \
+  --gpus '"device=2"' \
   --network=host \
+  --shm-size=64g \
   -v $(pwd)/policy/DynamicVLA/runs:/workspace/DOMINO/policy/DynamicVLA/runs \
   -v $(pwd)/data:/workspace/DOMINO/data \
   -v $(pwd)/policy/DynamicVLA:/workspace/DOMINO/policy/DynamicVLA \
@@ -542,8 +544,9 @@ docker run --rm -it \
 ```bash
 # 그 후 eval 컨테이너에서 client 실행 (별도 터미널)
 docker run --rm -it \
-  --gpus all \
+  --gpus '"device=2,3"' \
   --network=host \
+  --shm-size=64g \
   -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
   --device /dev/dri \
   -v $(pwd)/assets:/workspace/DOMINO/assets \
@@ -560,8 +563,9 @@ docker run --rm -it \
 # all task loop
 ```bash
 docker run --rm -it \
-  --gpus all \
+  --gpus '"device=3"' \
   --network=host \
+  --shm-size=64g \
   -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
   --device /dev/dri \
   -v $(pwd)/assets:/workspace/DOMINO/assets \
@@ -576,7 +580,7 @@ docker run --rm -it \
     --config policy/DynamicVLA/deploy_policy.yml \
     --task_config demo_clean_dynamic \
     --ckpt_setting domino_dynamicvla \
-    --test_num 100 \
+    --test_num 20 \
     --seed 0
 ```
 
@@ -630,9 +634,9 @@ depth 사이드카는 `data/lerobot_data/<task>/depth/cam_high/episode_XXXXXX.np
 ```bash
 # 실험1 — SmolVLA, reconstruction loss 없음
 docker run --rm -it \
-  --gpus '"device=2,3"' \
+  --gpus '"device=2"' \
   --network=host \
-  --shm-size=16g \
+  --shm-size=64g \
   -v $(pwd)/data:/workspace/DOMINO/data \
   -v $(pwd)/policy/DynamicVLA:/workspace/DOMINO/policy/DynamicVLA \
   domino-smolvla \
